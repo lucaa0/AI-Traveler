@@ -1,0 +1,77 @@
+{
+  "entities": {
+    "UserStats": {
+      "title": "UserStats",
+      "description": "Statistics and visited places for a user",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "The user's ID"
+        },
+        "visitedCountries": {
+          "type": "number",
+          "description": "Number of unique countries visited"
+        },
+        "visitedCities": {
+          "type": "number",
+          "description": "Number of unique cities visited"
+        },
+        "milesTraveled": {
+          "type": "number",
+          "description": "Total miles traveled"
+        },
+        "visitedPlacesList": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of place IDs or names the user has visited"
+        }
+      },
+      "required": ["uid", "visitedCountries", "visitedCities", "milesTraveled", "visitedPlacesList"]
+    },
+    "Itinerary": {
+      "title": "Itinerary",
+      "description": "A saved travel itinerary",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The ID of the user who saved the itinerary"
+        },
+        "destination": {
+          "type": "string",
+          "description": "The destination of the trip"
+        },
+        "country": {
+          "type": "string",
+          "description": "The country of the destination"
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Timestamp of when the itinerary was saved"
+        },
+        "itineraryData": {
+          "type": "string",
+          "description": "JSON stringified itinerary data"
+        }
+      },
+      "required": ["userId", "destination", "createdAt", "itineraryData"]
+    }
+  },
+  "firestore": {
+    "/userStats/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserStats"
+      },
+      "description": "Stores travel statistics for each user"
+    },
+    "/itineraries/{itineraryId}": {
+      "schema": {
+        "$ref": "#/entities/Itinerary"
+      },
+      "description": "Stores saved itineraries for users"
+    }
+  }
+}

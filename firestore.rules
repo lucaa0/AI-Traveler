@@ -1,0 +1,92 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: userStats
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required, immutable) - The user's ID
+    //   - visitedCountries: number (required, >= 0) - Number of unique countries visited
+    //   - visitedCities: number (required, >= 0) - Number of unique cities visited
+    //   - milesTraveled: number (required, >= 0) - Total miles traveled
+    //   - visitedPlacesList: list (required, max size 1000) - List of place IDs or names
+    //
+    // Collection: itineraries
+    // Document ID: {itineraryId}
+    // Fields:
+    //   - userId: string (required, immutable) - The ID of the user who saved the itinerary
+    //   - destination: string (required, max length 200) - The destination of the trip
+    //   - country: string (optional, max length 200) - The country of the destination
+    //   - createdAt: number (required, immutable) - Timestamp of when the itinerary was saved
+    //   - itineraryData: string (required, max length 100000) - JSON stringified itinerary data
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid;
+    }
+    
+    function uidNotModified() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == resource.data.uid;
+    }
+    
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    
+    function isValidUserStats(data) {
+      return hasRequiredFields(['uid', 'visitedCountries', 'visitedCities', 'milesTraveled', 'visitedPlacesList']) &&
+             data.keys().hasOnly(['uid', 'visitedCountries', 'visitedCities', 'milesTraveled', 'visitedPlacesList']) &&
+             data.uid is string &&
+             data.visitedCountries is number && data.visitedCountries >= 0 &&
+             data.visitedCities is number && data.visitedCities >= 0 &&
+             data.milesTraveled is number && data.milesTraveled >= 0 &&
+             data.visitedPlacesList is list && data.visitedPlacesList.size() <= 1000;
+    }
+
+    function isValidItinerary(data) {
+      return hasRequiredFields(['userId', 'destination', 'createdAt', 'itineraryData']) &&
+             data.keys().hasOnly(['userId', 'destination', 'country', 'createdAt', 'itineraryData']) &&
+             data.userId is string &&
+             data.destination is string && data.destination.size() > 0 && data.destination.size() <= 200 &&
+             (!('country' in data) || (data.country is string && data.country.size() <= 200)) &&
+             data.createdAt is number &&
+             data.itineraryData is string && data.itineraryData.size() <= 100000;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /userStats/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUserStats(request.resource.data) && uidUnchanged();
+      allow update: if isOwner(userId) && isValidUserStats(request.resource.data) && uidNotModified();
+      allow delete: if isOwner(userId);
+    }
+
+    match /itineraries/{itineraryId} {
+      allow read: if isOwner(resource.data.userId);
+      allow create: if isOwner(request.resource.data.userId) && isValidItinerary(request.resource.data);
+      allow update: if isOwner(resource.data.userId) && isOwner(request.resource.data.userId) && isValidItinerary(request.resource.data) && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(resource.data.userId);
+    }
+  }
+}

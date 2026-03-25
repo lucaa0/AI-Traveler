@@ -1,0 +1,5 @@
+{
+  "name": "AI Travel Planner",
+  "description": "An AI-powered travel itinerary planner that generates structured JSON itineraries.",
+  "requestFramePermissions": []
+}
