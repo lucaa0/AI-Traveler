@@ -1,6 +1,10 @@
 import { GoogleGenAI, Type } from '@google/genai';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+
+if (!process.env.GEMINI_API_KEY) {
+  console.warn("GEMINI_API_KEY is missing. Please configure your API key.");
+}
 
 export interface TravelParams {
   origin: string;
@@ -121,7 +125,15 @@ Return the itinerary as a structured JSON object containing 'flightDetails' and 
       }
     }
   });
-  const plannerData = JSON.parse(plannerRes.text?.trim() || '{}');
+  
+  let plannerData: any = {};
+  try {
+    plannerData = JSON.parse(plannerRes.text?.trim() || '{}');
+  } catch (e) {
+    console.error("Failed to parse planner data:", e, plannerRes.text);
+    throw new Error("The AI generated an invalid itinerary format. Please try again.");
+  }
+
   tripContext.flightDetails = plannerData.flightDetails || { outbound: '', return: '', estimatedCost: '' };
   tripContext.days = plannerData.days || [];
 
@@ -154,7 +166,14 @@ Return JSON with 'summary' and 'tips'.`;
       }
     }
   });
-  const conciergeData = JSON.parse(conciergeRes.text?.trim() || '{}');
+  
+  let conciergeData: any = {};
+  try {
+    conciergeData = JSON.parse(conciergeRes.text?.trim() || '{}');
+  } catch (e) {
+    console.error("Failed to parse concierge data:", e, conciergeRes.text);
+    throw new Error("The AI generated invalid tips data. Please try again.");
+  }
 
   onProgress?.('Finalizing itinerary...');
 

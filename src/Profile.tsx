@@ -167,8 +167,13 @@ export function ProfileView({ onViewItinerary }: { onViewItinerary: (itinerary: 
   const handleDeleteTrip = async (id: string) => {
     try {
       await deleteDoc(doc(db, 'itineraries', id));
+      toast.success('Itinerary deleted successfully.');
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `itineraries/${id}`);
+      try {
+        handleFirestoreError(error, OperationType.DELETE, `itineraries/${id}`);
+      } catch (e) {
+        // Error is already displayed via toast in handleFirestoreError
+      }
     }
   };
 

@@ -5,7 +5,7 @@
 
 import { useState, FormEvent, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MapPin, Calendar, DollarSign, Heart, Sparkles, Loader2, Compass, Clock, CheckCircle2, Ticket, Plane, ArrowRight, Menu, X, LogIn, LogOut } from 'lucide-react';
+import { MapPin, Calendar, DollarSign, Heart, Sparkles, Loader2, Compass, Clock, CheckCircle2, Ticket, Plane, ArrowRight, Menu, X, LogIn, LogOut, ChevronDown, Minus, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
 import { generateItinerary, fetchPlaceImage, TravelParams, Itinerary } from './planner';
 import { ProfileView } from './Profile';
 import { auth, db } from './firebase';
@@ -76,6 +76,13 @@ export default function App() {
   const [currentView, setCurrentView] = useState<'home' | 'profile'>('home');
   const [user, setUser] = useState<User | null>(null);
   const [visitedPlaces, setVisitedPlaces] = useState<string[]>([]);
+  const [isTierOpen, setIsTierOpen] = useState(false);
+  const [isDaysOpen, setIsDaysOpen] = useState(false);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+
+  const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+  const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -87,7 +94,11 @@ export default function App() {
           const docSnap = await getDoc(userStatsRef);
           docExists = docSnap.exists();
         } catch (error) {
-          handleFirestoreError(error, OperationType.GET, `userStats/${currentUser.uid}`);
+          try {
+            handleFirestoreError(error, OperationType.GET, `userStats/${currentUser.uid}`);
+          } catch (e) {
+            // Error is already displayed via toast in handleFirestoreError
+          }
         }
 
         if (!docExists) {
@@ -101,7 +112,11 @@ export default function App() {
               visitedPlacesList: []
             });
           } catch (error) {
-            handleFirestoreError(error, OperationType.CREATE, `userStats/${currentUser.uid}`);
+            try {
+              handleFirestoreError(error, OperationType.CREATE, `userStats/${currentUser.uid}`);
+            } catch (e) {
+              // Error is already displayed via toast in handleFirestoreError
+            }
           }
         }
       } else {
@@ -154,15 +169,20 @@ export default function App() {
     try {
       const userStatsRef = doc(db, 'userStats', user.uid);
       if (!visitedPlaces.includes(countryName)) {
-        await updateDoc(userStatsRef, {
+        await setDoc(userStatsRef, {
+          uid: user.uid,
           visitedPlacesList: arrayUnion(countryName),
           visitedCountries: increment(1),
           milesTraveled: increment(Math.floor(Math.random() * 500) + 100) // Simulate miles
-        });
+        }, { merge: true });
         toast.success(`Marked ${destinationName} (${countryName}) as visited!`);
       }
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `userStats/${user.uid}`);
+      try {
+        handleFirestoreError(err, OperationType.UPDATE, `userStats/${user.uid}`);
+      } catch (e) {
+        // Error is already displayed via toast in handleFirestoreError
+      }
     }
   };
 
@@ -213,13 +233,15 @@ export default function App() {
         const parsed = JSON.parse(errorMessage);
         if (parsed.error) {
           isFirestoreError = true;
+          errorMessage = `Database Error: ${parsed.error}`;
         }
       } catch (e) {
         // Not a JSON string, keep original message
       }
       
+      setError(errorMessage);
       if (!isFirestoreError) {
-        setError(errorMessage);
+        toast.error(errorMessage);
       }
     } finally {
       setLoadingState('');
@@ -331,7 +353,7 @@ export default function App() {
               className="glass-panel p-8 md:p-10 rounded-3xl space-y-8"
             >
               {/* Origin & Destination */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="relative group">
                   <label className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--color-luxury-muted)] mb-2 flex items-center gap-2 transition-colors group-focus-within:text-[var(--color-accent)]">
                     <Plane className="w-3.5 h-3.5" /> Origin
@@ -341,7 +363,7 @@ export default function App() {
                     value={params.origin}
                     onChange={(e) => setParams({ ...params, origin: e.target.value })}
                     placeholder="e.g. New York"
-                    className="w-full bg-transparent border-b border-[var(--color-luxury-border)] py-2 text-lg focus:outline-none focus:border-[var(--color-accent)] transition-colors placeholder:text-[var(--color-luxury-muted)]/30"
+                    className="w-full bg-white/[0.02] border border-[var(--color-luxury-border)] rounded-xl px-4 py-3 text-lg focus:outline-none focus:border-[var(--color-accent)] focus:bg-white/[0.04] transition-all placeholder:text-[var(--color-luxury-muted)]/30"
                   />
                 </div>
                 <div className="relative group">
@@ -353,50 +375,199 @@ export default function App() {
                     value={params.destination}
                     onChange={(e) => setParams({ ...params, destination: e.target.value })}
                     placeholder="e.g. Kyoto, Japan"
-                    className="w-full bg-transparent border-b border-[var(--color-luxury-border)] py-2 text-lg focus:outline-none focus:border-[var(--color-accent)] transition-colors placeholder:text-[var(--color-luxury-muted)]/30"
+                    className="w-full bg-white/[0.02] border border-[var(--color-luxury-border)] rounded-xl px-4 py-3 text-lg focus:outline-none focus:border-[var(--color-accent)] focus:bg-white/[0.04] transition-all placeholder:text-[var(--color-luxury-muted)]/30"
                   />
                 </div>
               </div>
 
               {/* Date, Days & Budget Row */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="relative group">
                   <label className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--color-luxury-muted)] mb-2 flex items-center gap-2 transition-colors group-focus-within:text-[var(--color-accent)]">
                     <Calendar className="w-3.5 h-3.5" /> Departure
                   </label>
-                  <input
-                    type="date"
-                    value={params.date}
-                    onChange={(e) => setParams({ ...params, date: e.target.value })}
-                    className="w-full bg-transparent border-b border-[var(--color-luxury-border)] py-2 text-lg focus:outline-none focus:border-[var(--color-accent)] transition-colors"
-                  />
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsCalendarOpen(!isCalendarOpen)}
+                      className="w-full bg-white/[0.02] border border-[var(--color-luxury-border)] rounded-xl px-4 py-3 text-lg text-left flex justify-between items-center focus:outline-none focus:border-[var(--color-accent)] focus:bg-white/[0.04] transition-all"
+                    >
+                      <span className={params.date ? "text-[var(--color-luxury-ink)]" : "text-[var(--color-luxury-muted)]/30"}>
+                        {params.date ? new Date(params.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Select Date'}
+                      </span>
+                      <Calendar className={`w-4 h-4 transition-colors ${isCalendarOpen ? 'text-[var(--color-accent)]' : 'text-[var(--color-luxury-muted)]'}`} />
+                    </button>
+                    
+                    <AnimatePresence>
+                      {isCalendarOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.2 }}
+                          className="absolute top-full left-0 mt-2 p-5 bg-[#1a1a1a] border border-[var(--color-luxury-border)] rounded-2xl z-50 shadow-2xl backdrop-blur-xl w-[300px]"
+                        >
+                          {/* Calendar Header */}
+                          <div className="flex justify-between items-center mb-6">
+                            <button 
+                              type="button" 
+                              onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}
+                              className="p-2 hover:bg-white/5 rounded-full hover:text-[var(--color-accent)] transition-colors"
+                            >
+                              <ChevronLeft className="w-5 h-5" />
+                            </button>
+                            <span className="font-serif text-lg text-[var(--color-luxury-ink)]">
+                              {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                            </span>
+                            <button 
+                              type="button" 
+                              onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}
+                              className="p-2 hover:bg-white/5 rounded-full hover:text-[var(--color-accent)] transition-colors"
+                            >
+                              <ChevronRight className="w-5 h-5" />
+                            </button>
+                          </div>
+                          
+                          {/* Calendar Grid */}
+                          <div className="grid grid-cols-7 gap-1 text-center mb-3">
+                            {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
+                              <div key={day} className="text-[10px] uppercase tracking-wider text-[var(--color-luxury-muted)] font-semibold py-1">
+                                {day}
+                              </div>
+                            ))}
+                          </div>
+                          <div className="grid grid-cols-7 gap-y-2 gap-x-1">
+                            {Array.from({ length: getFirstDayOfMonth(currentMonth.getFullYear(), currentMonth.getMonth()) }).map((_, i) => (
+                              <div key={`empty-${i}`} className="p-2" />
+                            ))}
+                            {Array.from({ length: getDaysInMonth(currentMonth.getFullYear(), currentMonth.getMonth()) }).map((_, i) => {
+                              const day = i + 1;
+                              const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                              const isSelected = params.date === dateStr;
+                              const isPast = new Date(dateStr + 'T00:00:00') < new Date(new Date().setHours(0,0,0,0));
+                              
+                              return (
+                                <button
+                                  key={day}
+                                  type="button"
+                                  disabled={isPast}
+                                  onClick={() => {
+                                    setParams({ ...params, date: dateStr });
+                                    setIsCalendarOpen(false);
+                                  }}
+                                  className={`text-sm rounded-full w-9 h-9 flex items-center justify-center mx-auto transition-all ${
+                                    isSelected 
+                                      ? 'bg-gradient-to-br from-[var(--color-accent)] to-[#F3E5AB] text-[#0f0f0f] font-bold shadow-[0_0_10px_rgba(212,175,55,0.4)]' 
+                                      : isPast 
+                                        ? 'text-[var(--color-luxury-muted)]/20 cursor-not-allowed' 
+                                        : 'text-[var(--color-luxury-ink)] hover:bg-white/10 hover:text-[var(--color-accent)]'
+                                  }`}
+                                >
+                                  {day}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
                 <div className="relative group">
                   <label className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--color-luxury-muted)] mb-2 flex items-center gap-2 transition-colors group-focus-within:text-[var(--color-accent)]">
-                    <Clock className="w-3.5 h-3.5" /> Days
+                    <Clock className="w-3.5 h-3.5" /> Duration
                   </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="14"
-                    value={params.days}
-                    onChange={(e) => setParams({ ...params, days: parseInt(e.target.value) || 1 })}
-                    className="w-full bg-transparent border-b border-[var(--color-luxury-border)] py-2 text-lg focus:outline-none focus:border-[var(--color-accent)] transition-colors"
-                  />
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsDaysOpen(!isDaysOpen)}
+                      className="w-full bg-white/[0.02] border border-[var(--color-luxury-border)] rounded-xl px-4 py-3 text-lg text-left flex justify-between items-center focus:outline-none focus:border-[var(--color-accent)] focus:bg-white/[0.04] transition-all"
+                    >
+                      <span className="text-[var(--color-luxury-ink)]">
+                        {params.days} {params.days === 1 ? 'Day' : 'Days'}
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-[var(--color-luxury-muted)] transition-transform duration-300 ${isDaysOpen ? 'rotate-180 text-[var(--color-accent)]' : ''}`} />
+                    </button>
+                    <AnimatePresence>
+                      {isDaysOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.2 }}
+                          className="absolute top-full left-0 w-full mt-2 bg-[#1a1a1a] border border-[var(--color-luxury-border)] rounded-xl overflow-hidden z-50 shadow-2xl backdrop-blur-xl max-h-60 overflow-y-auto"
+                        >
+                          {Array.from({ length: 14 }, (_, i) => i + 1).map((day) => (
+                            <button
+                              key={day}
+                              type="button"
+                              onClick={() => {
+                                setParams({ ...params, days: day });
+                                setIsDaysOpen(false);
+                              }}
+                              className={`w-full text-left px-4 py-3 transition-colors ${
+                                params.days === day 
+                                  ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)]' 
+                                  : 'text-[var(--color-luxury-muted)] hover:bg-white/[0.05] hover:text-[var(--color-luxury-ink)]'
+                              }`}
+                            >
+                              {day} {day === 1 ? 'Day' : 'Days'}
+                            </button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
                 <div className="relative group">
                   <label className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--color-luxury-muted)] mb-2 flex items-center gap-2 transition-colors group-focus-within:text-[var(--color-accent)]">
                     <DollarSign className="w-3.5 h-3.5" /> Tier
                   </label>
-                  <select
-                    value={params.budget}
-                    onChange={(e) => setParams({ ...params, budget: e.target.value as any })}
-                    className="w-full bg-transparent border-b border-[var(--color-luxury-border)] py-2 text-lg focus:outline-none focus:border-[var(--color-accent)] transition-colors appearance-none cursor-pointer"
-                  >
-                    <option value="Low" className="bg-[var(--color-luxury-bg)]">Essential</option>
-                    <option value="Medium" className="bg-[var(--color-luxury-bg)]">Comfort</option>
-                    <option value="High" className="bg-[var(--color-luxury-bg)]">Prestige</option>
-                  </select>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsTierOpen(!isTierOpen)}
+                      className="w-full bg-white/[0.02] border border-[var(--color-luxury-border)] rounded-xl px-4 py-3 text-lg text-left flex justify-between items-center focus:outline-none focus:border-[var(--color-accent)] focus:bg-white/[0.04] transition-all"
+                    >
+                      <span className="text-[var(--color-luxury-ink)]">
+                        {params.budget === 'Low' ? 'Essential' : params.budget === 'Medium' ? 'Comfort' : 'Prestige'}
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-[var(--color-luxury-muted)] transition-transform duration-300 ${isTierOpen ? 'rotate-180 text-[var(--color-accent)]' : ''}`} />
+                    </button>
+                    <AnimatePresence>
+                      {isTierOpen && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ duration: 0.2 }}
+                          className="absolute top-full left-0 w-full mt-2 bg-[#1a1a1a] border border-[var(--color-luxury-border)] rounded-xl overflow-hidden z-50 shadow-2xl backdrop-blur-xl"
+                        >
+                          {[
+                            { value: 'Low', label: 'Essential' },
+                            { value: 'Medium', label: 'Comfort' },
+                            { value: 'High', label: 'Prestige' }
+                          ].map((tier) => (
+                            <button
+                              key={tier.value}
+                              type="button"
+                              onClick={() => {
+                                setParams({ ...params, budget: tier.value as any });
+                                setIsTierOpen(false);
+                              }}
+                              className={`w-full text-left px-4 py-3 transition-colors ${
+                                params.budget === tier.value 
+                                  ? 'bg-[var(--color-accent)]/10 text-[var(--color-accent)]' 
+                                  : 'text-[var(--color-luxury-muted)] hover:bg-white/[0.05] hover:text-[var(--color-luxury-ink)]'
+                              }`}
+                            >
+                              {tier.label}
+                            </button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
               </div>
 
@@ -413,13 +584,13 @@ export default function App() {
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.8 }}
                         key={interest}
-                        className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-[var(--color-luxury-border)] text-sm bg-white/5 backdrop-blur-sm"
+                        className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-[var(--color-accent)]/50 text-sm bg-[var(--color-accent)]/10 text-[var(--color-accent)] backdrop-blur-sm"
                       >
                         {interest}
                         <button
                           type="button"
                           onClick={() => handleRemoveInterest(interest)}
-                          className="hover:text-red-400 transition-colors"
+                          className="hover:text-white transition-colors"
                         >
                           &times;
                         </button>
@@ -427,7 +598,7 @@ export default function App() {
                     ))}
                   </AnimatePresence>
                 </div>
-                <div className="flex gap-4 items-end group">
+                <div className="flex gap-4 items-center group">
                   <input
                     type="text"
                     value={interestInput}
@@ -439,12 +610,12 @@ export default function App() {
                       }
                     }}
                     placeholder="e.g. Fine Dining, Art"
-                    className="flex-1 bg-transparent border-b border-[var(--color-luxury-border)] py-2 text-lg focus:outline-none focus:border-[var(--color-accent)] transition-colors placeholder:text-[var(--color-luxury-muted)]/30"
+                    className="flex-1 bg-white/[0.02] border border-[var(--color-luxury-border)] rounded-xl px-4 py-3 text-lg focus:outline-none focus:border-[var(--color-accent)] focus:bg-white/[0.04] transition-all placeholder:text-[var(--color-luxury-muted)]/30"
                   />
                   <button
                     type="button"
                     onClick={handleAddInterest}
-                    className="text-[10px] font-semibold uppercase tracking-[0.15em] pb-2 text-[var(--color-luxury-muted)] hover:text-[var(--color-accent)] transition-colors"
+                    className="px-6 py-3 bg-white/[0.05] border border-[var(--color-luxury-border)] rounded-xl text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--color-luxury-ink)] hover:bg-white/[0.1] hover:border-[var(--color-accent)] transition-all"
                   >
                     Add
                   </button>
@@ -460,7 +631,7 @@ export default function App() {
               <button
                 type="submit"
                 disabled={!!loadingState}
-                className="w-full mt-8 py-4 px-6 bg-[var(--color-luxury-ink)] text-[var(--color-luxury-bg)] text-[11px] font-bold uppercase tracking-[0.2em] rounded-full hover:bg-[var(--color-accent)] hover:text-black transition-all duration-300 flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(212,175,55,0.3)]"
+                className="w-full mt-8 py-5 px-6 bg-gradient-to-r from-[var(--color-luxury-ink)] to-[#a3a3a3] text-[var(--color-luxury-bg)] text-[12px] font-bold uppercase tracking-[0.2em] rounded-xl hover:from-[var(--color-accent)] hover:to-[#F3E5AB] hover:text-[#0f0f0f] transition-all duration-500 flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(212,175,55,0.4)] transform hover:-translate-y-1"
               >
                 {loadingState ? (
                   <>
