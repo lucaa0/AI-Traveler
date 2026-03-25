@@ -31,7 +31,9 @@ export interface Itinerary {
     activities: {
       time: string;
       title: string;
+      placeName: string;
       description: string;
+      insight: string;
       costEstimate: string;
       mapsUrl: string;
       ticketUrl: string;
@@ -45,44 +47,30 @@ export async function generateItinerary(
   params: TravelParams,
   onProgress?: (status: string) => void
 ): Promise<Itinerary> {
-  // Shared state between agents
-  const tripContext: any = { params };
+  onProgress?.('AI is crafting your perfect itinerary...');
 
-  // ==========================================
-  // AGENT 1: The Researcher (Destination Expert)
-  // ==========================================
-  onProgress?.('Destination Expert is researching...');
-  const researchPrompt = `You are a Destination Expert. Research ${params.destination} for a ${params.days}-day trip.
-Budget: ${params.budget}. Interests: ${params.interests.join(', ')}.
-Provide a concise list of top attractions, hidden gems, and local culinary highlights that fit these criteria.`;
-
-  const researchRes = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: researchPrompt,
-  });
-  tripContext.research = researchRes.text;
-
-  // ==========================================
-  // AGENT 2: The Logistician (Planner)
-  // ==========================================
-  onProgress?.('Logistician is drafting the timeline...');
-  const plannerPrompt = `You are a Master Travel Planner. Using the following research, create a highly precise and complete day-by-day itinerary for a trip from ${params.origin} to ${params.destination} starting on ${params.date}.
-Research: ${tripContext.research}
+  const prompt = `You are a Master Travel Planner and Luxury Concierge. Create a highly precise, complete, and elegant day-by-day itinerary for a trip from ${params.origin} to ${params.destination} starting on ${params.date}.
 Duration: ${params.days} days
 Budget: ${params.budget}
+Interests: ${params.interests.join(', ')}
 
-Crucial: You MUST include realistic estimated flight times (outbound and return) and estimated flight costs based on the origin and destination. Make the daily activities very detailed with specific times.
+Crucial Requirements:
+1. Include realistic estimated flight times (outbound and return) and estimated flight costs based on the origin and destination.
+2. Make the daily activities very detailed with specific times. Include top attractions, hidden gems, and local culinary highlights that fit the budget and interests.
+3. Provide a short, elegant summary of the trip.
+4. Provide 4-6 crucial travel tips (packing, etiquette, transport, safety).
 
-Return the itinerary as a structured JSON object containing 'flightDetails' and 'days'.`;
+Return the itinerary as a structured JSON object containing 'summary', 'flightDetails', 'days', and 'tips'.`;
 
-  const plannerRes = await ai.models.generateContent({
+  const res = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: plannerPrompt,
+    contents: prompt,
     config: {
       responseMimeType: 'application/json',
       responseSchema: {
         type: Type.OBJECT,
         properties: {
+          summary: { type: Type.STRING, description: 'A short, elegant summary of the trip' },
           flightDetails: {
             type: Type.OBJECT,
             properties: {
@@ -107,113 +95,130 @@ Return the itinerary as a structured JSON object containing 'flightDetails' and 
                     properties: {
                       time: { type: Type.STRING, description: 'Time of the activity (e.g., Morning, 10:00 AM)' },
                       title: { type: Type.STRING, description: 'Title of the activity' },
+                      placeName: { type: Type.STRING, description: 'The exact name of the specific place, venue, or landmark (e.g., "Louvre Museum", "Osteria Francescana"). If it is a general activity, provide a relevant visual keyword (e.g., "Pasta", "Sunset").' },
                       description: { type: Type.STRING, description: 'Description of the activity' },
+                      insight: { type: Type.STRING, description: 'A fascinating historical fact, local secret, or unique insight about this specific place.' },
                       costEstimate: { type: Type.STRING, description: 'Estimated cost' },
                       mapsUrl: { type: Type.STRING, description: 'Google Maps search URL for this exact place' },
                       ticketUrl: { type: Type.STRING, description: 'URL to buy tickets or official website. Empty string if not applicable.' },
                       imagePrompt: { type: Type.STRING, description: 'A highly detailed, specific prompt for an AI image generator to create a realistic, high-quality travel photography shot of this EXACT location. Must include the specific name of the place, the city, time of day lighting (e.g., golden hour, night illumination), and photographic style (e.g., 8k resolution, DSLR, wide-angle).' }
                     },
-                    required: ['time', 'title', 'description', 'costEstimate', 'mapsUrl', 'ticketUrl', 'imagePrompt']
+                    required: ['time', 'title', 'placeName', 'description', 'insight', 'costEstimate', 'mapsUrl', 'ticketUrl', 'imagePrompt']
                   }
                 }
               },
               required: ['day', 'theme', 'imageKeyword', 'activities']
             }
-          }
-        },
-        required: ['flightDetails', 'days']
-      }
-    }
-  });
-  
-  let plannerData: any = {};
-  try {
-    plannerData = JSON.parse(plannerRes.text?.trim() || '{}');
-  } catch (e) {
-    console.error("Failed to parse planner data:", e, plannerRes.text);
-    throw new Error("The AI generated an invalid itinerary format. Please try again.");
-  }
-
-  tripContext.flightDetails = plannerData.flightDetails || { outbound: '', return: '', estimatedCost: '' };
-  tripContext.days = plannerData.days || [];
-
-  // ==========================================
-  // AGENT 3: The Concierge (Local Guide)
-  // ==========================================
-  onProgress?.('Concierge is adding final tips...');
-  const conciergePrompt = `You are a Luxury Travel Concierge. Based on this itinerary for ${params.destination}, provide a short summary of the trip and 4-6 crucial travel tips (packing, etiquette, transport, safety).
-Itinerary: ${JSON.stringify(tripContext.days)}
-Flight Details: ${JSON.stringify(tripContext.flightDetails)}
-
-Return JSON with 'summary' and 'tips'.`;
-
-  const conciergeRes = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: conciergePrompt,
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          summary: { type: Type.STRING, description: 'A short, elegant summary of the trip' },
+          },
           tips: {
             type: Type.ARRAY,
             items: { type: Type.STRING },
             description: 'Helpful travel tips'
           }
         },
-        required: ['summary', 'tips']
+        required: ['summary', 'flightDetails', 'days', 'tips']
       }
     }
   });
   
-  let conciergeData: any = {};
+  let plannerData: any = {};
   try {
-    conciergeData = JSON.parse(conciergeRes.text?.trim() || '{}');
+    plannerData = JSON.parse(res.text?.trim() || '{}');
   } catch (e) {
-    console.error("Failed to parse concierge data:", e, conciergeRes.text);
-    throw new Error("The AI generated invalid tips data. Please try again.");
+    console.error("Failed to parse planner data:", e, res.text);
+    throw new Error("The AI generated an invalid itinerary format. Please try again.");
   }
 
   onProgress?.('Finalizing itinerary...');
 
-  // Combine the results from all agents
   return {
     destination: params.destination,
     country: params.destination.split(',').pop()?.trim() || params.destination, // Simple heuristic for now
-    summary: conciergeData.summary || 'A wonderful journey awaits.',
-    flightDetails: tripContext.flightDetails,
-    days: tripContext.days,
-    tips: conciergeData.tips || []
+    summary: plannerData.summary || 'A wonderful journey awaits.',
+    flightDetails: plannerData.flightDetails || { outbound: '', return: '', estimatedCost: '' },
+    days: plannerData.days || [],
+    tips: plannerData.tips || []
   };
 }
 
 const imageCache = new Map<string, string>();
 
-export async function fetchPlaceImage(query: string): Promise<string> {
+export async function fetchPlaceImage(placeName: string, destination: string): Promise<string> {
+  const query = `${placeName} ${destination}`;
+  
   if (imageCache.has(query)) {
     return imageCache.get(query)!;
   }
 
-  try {
-    // Using Wikipedia/Wikimedia API to get real, free images without requiring an API key
-    const res = await fetch(`https://en.wikipedia.org/w/api.php?action=query&format=json&prop=pageimages&piprop=original&generator=search&gsrsearch=${encodeURIComponent(query)}&gsrlimit=1&origin=*`);
-    const data = await res.json();
-    const pages = data?.query?.pages;
-    if (pages) {
-      const pageId = Object.keys(pages)[0];
-      const imageUrl = pages[pageId]?.original?.source;
-      if (imageUrl) {
+  const googleApiKey = import.meta.env.VITE_GOOGLE_SEARCH_API_KEY;
+  const googleCx = import.meta.env.VITE_GOOGLE_SEARCH_CX;
+
+  if (googleApiKey && googleCx) {
+    try {
+      // 1. Try Google Custom Search API if keys are provided
+      const res = await fetch(`https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(query)}&cx=${googleCx}&key=${googleApiKey}&searchType=image&imgSize=large&imgType=photo&num=1`);
+      const data = await res.json();
+      if (data.items && data.items.length > 0) {
+        const imageUrl = data.items[0].link;
         imageCache.set(query, imageUrl);
         return imageUrl;
+      }
+    } catch (e) {
+      console.error("Google Custom Search API error, falling back to Wikimedia:", e);
+    }
+  }
+
+  try {
+    // 2. Try Wikipedia article lead image (usually highest relevance for famous places)
+    // Search just for the place name to avoid matching the city's main article
+    const wikiRes = await fetch(`https://en.wikipedia.org/w/api.php?action=query&format=json&prop=pageimages&piprop=original&generator=search&gsrsearch=${encodeURIComponent(placeName)}&gsrlimit=3&origin=*`);
+    const wikiData = await wikiRes.json();
+    const wikiPages = wikiData?.query?.pages;
+    
+    if (wikiPages) {
+      // Find the first valid image (not an icon or SVG)
+      for (const pageId of Object.keys(wikiPages)) {
+        const page = wikiPages[pageId];
+        const imageUrl = page?.original?.source;
+        
+        // Ensure the Wikipedia page title is somewhat related to the place name, 
+        // to avoid generic city matches if the place name is too broad.
+        const titleWords = page.title.toLowerCase().split(' ');
+        const placeWords = placeName.toLowerCase().split(' ');
+        const hasMatch = placeWords.some(w => w.length > 3 && titleWords.includes(w)) || placeWords.join(' ').includes(page.title.toLowerCase());
+
+        if (hasMatch && imageUrl && !imageUrl.toLowerCase().endsWith('.svg') && !imageUrl.toLowerCase().includes('icon')) {
+          imageCache.set(query, imageUrl);
+          return imageUrl;
+        }
+      }
+    }
+
+    // 3. Try Wikimedia Commons search (broader search for images)
+    const commonsRes = await fetch(`https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(query + " filetype:bitmap")}&gsrlimit=5&prop=imageinfo&iiprop=url&format=json&origin=*`);
+    const commonsData = await commonsRes.json();
+    const commonsPages = commonsData?.query?.pages;
+    
+    if (commonsPages) {
+      // Find the first valid image
+      for (const pageId of Object.keys(commonsPages)) {
+        const imageInfo = commonsPages[pageId]?.imageinfo?.[0];
+        const imageUrl = imageInfo?.url;
+        if (imageUrl && !imageUrl.toLowerCase().endsWith('.svg') && !imageUrl.toLowerCase().endsWith('.gif')) {
+          imageCache.set(query, imageUrl);
+          return imageUrl;
+        }
       }
     }
   } catch (e) {
     console.error("Image fetch error", e);
   }
   
-  // Elegant fallback image if the specific place is not found on Wikipedia
-  const fallback = `https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=1920&q=80`;
+  // 4. Elegant fallback image using Picsum with a deterministic seed based on the place name
+  const seedWords = placeName.split(' ').filter(w => w.length > 3);
+  const seed = seedWords.length > 0 ? seedWords[0] : placeName.replace(/[^a-zA-Z0-9]/g, '') || 'travel';
+  
+  const fallback = `https://picsum.photos/seed/${encodeURIComponent(seed)}/1920/1080?blur=2`;
   imageCache.set(query, fallback);
   return fallback;
 }

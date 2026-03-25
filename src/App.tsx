@@ -5,7 +5,7 @@
 
 import { useState, FormEvent, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MapPin, Calendar, DollarSign, Heart, Sparkles, Loader2, Compass, Clock, CheckCircle2, Ticket, Plane, ArrowRight, Menu, X, LogIn, LogOut, ChevronDown, Minus, Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { MapPin, Calendar, DollarSign, Heart, Sparkles, Loader2, Compass, Clock, CheckCircle2, Ticket, Plane, ArrowRight, Menu, X, LogIn, LogOut, ChevronDown, Minus, Plus, ChevronLeft, ChevronRight, Lightbulb } from 'lucide-react';
 import { generateItinerary, fetchPlaceImage, TravelParams, Itinerary } from './planner';
 import { ProfileView } from './Profile';
 import { auth, db } from './firebase';
@@ -14,26 +14,26 @@ import { doc, getDoc, setDoc, updateDoc, arrayUnion, increment, onSnapshot, coll
 import { Toaster, toast } from 'sonner';
 import { handleFirestoreError, OperationType } from './firebase-error';
 
-function PlaceImage({ query, alt, className }: { query: string, alt: string, className?: string }) {
+function PlaceImage({ placeName, destination, alt, className }: { placeName: string, destination: string, alt: string, className?: string }) {
   const [imgSrc, setImgSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
     setLoading(true);
-    fetchPlaceImage(query).then(src => {
+    fetchPlaceImage(placeName, destination).then(src => {
       if (isMounted) {
         setImgSrc(src);
         setLoading(false);
       }
     }).catch(err => {
-      console.error("Image fetch failed for query:", query, err);
+      console.error("Image fetch failed for:", placeName, destination, err);
       if (isMounted) {
         setLoading(false);
       }
     });
     return () => { isMounted = false; };
-  }, [query]);
+  }, [placeName, destination]);
 
   if (loading) {
     return (
@@ -55,6 +55,8 @@ function PlaceImage({ query, alt, className }: { query: string, alt: string, cla
       src={imgSrc} 
       alt={alt} 
       className={className} 
+      loading="lazy"
+      referrerPolicy="no-referrer"
     />
   );
 }
@@ -74,6 +76,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentView, setCurrentView] = useState<'home' | 'profile'>('home');
+  const [currentDayIndex, setCurrentDayIndex] = useState(0);
   const [user, setUser] = useState<User | null>(null);
   const [visitedPlaces, setVisitedPlaces] = useState<string[]>([]);
   const [isTierOpen, setIsTierOpen] = useState(false);
@@ -325,7 +328,7 @@ export default function App() {
         >
           
           {/* Form Section */}
-          <div className="lg:col-span-5 flex flex-col gap-12 sticky top-32">
+          <div className="lg:col-span-5 flex flex-col gap-12 lg:sticky lg:top-32">
             <div className="space-y-6">
               <motion.h2 
                 initial={{ opacity: 0, y: 20 }}
@@ -692,133 +695,187 @@ export default function App() {
                 className="space-y-16"
               >
                 {/* Hero Destination */}
-                <div className="relative h-[500px] rounded-[2rem] overflow-hidden shadow-2xl">
+                <div className="relative h-[600px] md:h-[700px] rounded-[2.5rem] overflow-hidden shadow-2xl group">
                   <PlaceImage 
-                    query={`${itinerary.destination} city landmark landscape`}
+                    placeName={`${itinerary.destination} city landmark landscape`}
+                    destination={itinerary.country}
                     alt={itinerary.destination}
-                    className="absolute inset-0 w-full h-full object-cover"
+                    className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-[2s] ease-out"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                  <div className="absolute bottom-0 left-0 p-10 md:p-16 text-white w-full">
-                    <h2 className="text-5xl md:text-7xl font-serif font-light mb-6 leading-none">
-                      {itinerary.destination}
-                    </h2>
-                    <p className="text-lg md:text-xl font-light text-white/90 max-w-2xl leading-relaxed">
-                      {itinerary.summary}
-                    </p>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+                  <div className="absolute bottom-0 left-0 p-10 md:p-20 text-white w-full">
+                    <motion.div
+                      initial={{ opacity: 0, y: 30 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 1, delay: 0.2 }}
+                    >
+                      <div className="flex items-center gap-4 mb-6">
+                        <div className="h-[1px] w-12 bg-white/50" />
+                        <span className="text-xs font-semibold uppercase tracking-[0.3em] text-white/80">
+                          Curated Journey
+                        </span>
+                      </div>
+                      <h2 className="text-6xl md:text-8xl font-serif font-light mb-8 leading-none tracking-tight">
+                        {itinerary.destination}
+                      </h2>
+                      <p className="text-lg md:text-2xl font-light text-white/90 max-w-3xl leading-relaxed">
+                        {itinerary.summary}
+                      </p>
+                    </motion.div>
                   </div>
                 </div>
 
                 {/* Flights Section */}
                 {itinerary.flightDetails && (
-                  <div className="mt-16 border-t border-[var(--color-luxury-border)] pt-16">
-                    <h3 className="text-3xl font-serif mb-10 flex items-center gap-4">
-                      <Plane className="w-8 h-8 opacity-50" />
-                      Flight Information
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="p-6 border border-[var(--color-luxury-border)] rounded-2xl bg-white/5 backdrop-blur-sm">
-                        <div className="flex items-center gap-3 mb-4 text-[var(--color-luxury-muted)]">
-                          <Plane className="w-4 h-4" />
-                          <span className="text-[11px] font-semibold uppercase tracking-[0.1em]">Outbound Flight</span>
+                  <div className="mt-24 border-t border-[var(--color-luxury-border)] pt-20">
+                    <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
+                      <div>
+                        <div className="flex items-center gap-4 mb-4">
+                          <Plane className="w-5 h-5 text-[var(--color-accent)]" />
+                          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--color-luxury-muted)]">Logistics</span>
                         </div>
-                        <p className="text-[var(--color-luxury-ink)] leading-relaxed">{itinerary.flightDetails.outbound}</p>
+                        <h3 className="text-4xl font-serif">Flight Arrangements</h3>
                       </div>
-                      <div className="p-6 border border-[var(--color-luxury-border)] rounded-2xl bg-white/5 backdrop-blur-sm">
-                        <div className="flex items-center gap-3 mb-4 text-[var(--color-luxury-muted)]">
-                          <Plane className="w-4 h-4 rotate-180" />
-                          <span className="text-[11px] font-semibold uppercase tracking-[0.1em]">Return Flight</span>
-                        </div>
-                        <p className="text-[var(--color-luxury-ink)] leading-relaxed">{itinerary.flightDetails.return}</p>
+                      <div className="inline-flex items-center gap-3 px-8 py-4 border border-[var(--color-luxury-border)] rounded-full bg-[var(--color-luxury-ink)] text-[var(--color-luxury-bg)] shadow-xl">
+                        <DollarSign className="w-5 h-5 text-[var(--color-accent)]" />
+                        <span className="text-sm font-medium tracking-widest uppercase">Est. Total: {itinerary.flightDetails.estimatedCost}</span>
                       </div>
                     </div>
-                    <div className="mt-6 inline-flex items-center gap-3 px-6 py-3 border border-[var(--color-luxury-border)] rounded-full bg-[var(--color-luxury-ink)] text-[var(--color-luxury-bg)]">
-                      <DollarSign className="w-4 h-4" />
-                      <span className="text-sm font-medium tracking-wide">Estimated Total Cost: {itinerary.flightDetails.estimatedCost}</span>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <motion.div 
+                        whileHover={{ y: -5 }}
+                        className="p-8 border border-[var(--color-luxury-border)] rounded-3xl bg-[var(--color-luxury-surface)] shadow-lg transition-all duration-300"
+                      >
+                        <div className="flex items-center gap-4 mb-6">
+                          <div className="w-10 h-10 rounded-full bg-[var(--color-luxury-ink)]/5 flex items-center justify-center">
+                            <Plane className="w-5 h-5 text-[var(--color-luxury-ink)]" />
+                          </div>
+                          <span className="text-xs font-semibold uppercase tracking-[0.15em] text-[var(--color-luxury-muted)]">Outbound Journey</span>
+                        </div>
+                        <p className="text-[var(--color-luxury-ink)] leading-relaxed text-lg font-light">{itinerary.flightDetails.outbound}</p>
+                      </motion.div>
+                      
+                      <motion.div 
+                        whileHover={{ y: -5 }}
+                        className="p-8 border border-[var(--color-luxury-border)] rounded-3xl bg-[var(--color-luxury-surface)] shadow-lg transition-all duration-300"
+                      >
+                        <div className="flex items-center gap-4 mb-6">
+                          <div className="w-10 h-10 rounded-full bg-[var(--color-luxury-ink)]/5 flex items-center justify-center">
+                            <Plane className="w-5 h-5 text-[var(--color-luxury-ink)] rotate-180" />
+                          </div>
+                          <span className="text-xs font-semibold uppercase tracking-[0.15em] text-[var(--color-luxury-muted)]">Return Journey</span>
+                        </div>
+                        <p className="text-[var(--color-luxury-ink)] leading-relaxed text-lg font-light">{itinerary.flightDetails.return}</p>
+                      </motion.div>
                     </div>
                   </div>
                 )}
 
-                {/* Days */}
-                <div className="space-y-24 mt-16">
-                  {itinerary.days.map((day, index) => (
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true, margin: "-100px" }}
-                      transition={{ duration: 0.6, delay: 0.1 }}
-                      key={day.day}
-                      className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12 items-start"
+                {/* Days Pagination */}
+                <div className="mt-24">
+                  <div className="flex flex-col sm:flex-row items-center justify-between mb-16 border-b border-[var(--color-luxury-border)] pb-8 gap-6">
+                    <button 
+                      onClick={() => { setCurrentDayIndex(Math.max(0, currentDayIndex - 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                      disabled={currentDayIndex === 0}
+                      className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] font-semibold text-[var(--color-luxury-muted)] hover:text-[var(--color-luxury-ink)] disabled:opacity-30 transition-colors"
                     >
-                      {/* Day Image */}
-                      <div className={`md:col-span-5 ${index % 2 !== 0 ? 'md:order-2' : ''}`}>
-                        <div className="sticky top-32">
-                          <div className="aspect-[3/4] rounded-2xl overflow-hidden">
-                            <PlaceImage 
-                              query={`${day.imageKeyword} ${itinerary.destination}`}
-                              alt={day.theme}
-                              className="w-full h-full object-cover hover:scale-105 transition-transform duration-1000"
-                            />
-                          </div>
-                          <div className="mt-6">
-                            <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--color-luxury-muted)]">
-                              Day 0{day.day}
-                            </span>
-                            <h3 className="text-2xl font-serif mt-2">{day.theme}</h3>
-                          </div>
-                        </div>
-                      </div>
+                      <ChevronLeft className="w-4 h-4" /> Previous Day
+                    </button>
+                    <span className="text-xl font-serif tracking-widest text-[var(--color-accent)] order-first sm:order-none">
+                      Day {currentDayIndex + 1} / {itinerary.days.length}
+                    </span>
+                    <button 
+                      onClick={() => { setCurrentDayIndex(Math.min(itinerary.days.length - 1, currentDayIndex + 1)); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                      disabled={currentDayIndex === itinerary.days.length - 1}
+                      className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] font-semibold text-[var(--color-luxury-muted)] hover:text-[var(--color-luxury-ink)] disabled:opacity-30 transition-colors"
+                    >
+                      Next Day <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
 
-                      {/* Day Activities */}
-                      <div className={`md:col-span-7 ${index % 2 !== 0 ? 'md:order-1' : ''}`}>
-                        <div className="space-y-12 mt-8 md:mt-0">
-                          {day.activities.map((activity, actIndex) => (
-                            <div key={actIndex} className="relative pl-8 border-l border-[var(--color-luxury-border)] pb-12 last:pb-0">
-                              <div className="absolute left-0 top-0 w-2 h-2 -translate-x-[5px] rounded-full bg-[var(--color-luxury-ink)]" />
-                              <div className="flex flex-col xl:flex-row gap-6">
-                                <div className="flex-1">
-                                  <div className="flex items-center justify-between mb-3">
-                                    <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[var(--color-luxury-muted)]">
-                                      {activity.time}
-                                    </span>
-                                    <span className="text-[11px] font-medium tracking-wider border border-[var(--color-luxury-border)] px-3 py-1 rounded-full">
-                                      {activity.costEstimate}
-                                    </span>
-                                  </div>
-                                  <h4 className="text-xl font-serif mb-3">{activity.title}</h4>
-                                  <p className="text-[var(--color-luxury-ink)]/70 leading-relaxed font-light mb-6">
-                                    {activity.description}
+                  <motion.div
+                    key={currentDayIndex}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5 }}
+                    className="max-w-4xl mx-auto px-4 md:px-0"
+                  >
+                    <div className="mb-12 text-center">
+                      <h3 className="text-3xl md:text-4xl font-serif mb-4">{itinerary.days[currentDayIndex].theme}</h3>
+                    </div>
+
+                    {/* Day Activities */}
+                    <div className="space-y-12">
+                      {itinerary.days[currentDayIndex].activities.map((activity, actIndex) => (
+                        <motion.div 
+                          initial={{ opacity: 0, x: 20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ duration: 0.5, delay: actIndex * 0.1 }}
+                          key={actIndex} 
+                          className="relative pl-6 md:pl-8 border-l border-[var(--color-luxury-border)] pb-12 last:pb-0 group"
+                        >
+                          <div className="absolute left-0 top-0 w-3 h-3 -translate-x-[6.5px] rounded-full bg-[var(--color-luxury-bg)] border-2 border-[var(--color-luxury-ink)] group-hover:bg-[var(--color-luxury-ink)] transition-colors duration-300" />
+                          <div className="flex flex-col gap-6">
+                            <div className="flex-1">
+                              <div className="flex flex-wrap items-center justify-between mb-4 gap-2">
+                                <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--color-luxury-muted)] flex items-center gap-2">
+                                  <Clock className="w-3 h-3" /> {activity.time}
+                                </span>
+                                <span className="text-[10px] font-medium tracking-wider border border-[var(--color-luxury-border)] px-3 py-1 rounded-full bg-[var(--color-luxury-surface)]">
+                                  {activity.costEstimate}
+                                </span>
+                              </div>
+                              <h4 className="text-xl md:text-2xl font-serif mb-3 group-hover:text-[var(--color-accent)] transition-colors duration-300">{activity.title}</h4>
+                              <p className="text-[var(--color-luxury-ink)]/70 leading-relaxed font-light mb-6 text-sm">
+                                {activity.description}
+                              </p>
+                              
+                              {activity.insight && (
+                                <div className="mb-6 bg-[var(--color-luxury-surface)] p-4 rounded-xl border border-[var(--color-luxury-border)]/50 flex gap-3 items-start">
+                                  <Lightbulb className="w-4 h-4 text-[var(--color-accent)] shrink-0 mt-0.5" />
+                                  <p className="text-xs leading-relaxed text-[var(--color-luxury-ink)]/80 italic">
+                                    <span className="font-semibold not-italic block mb-1 text-[10px] uppercase tracking-wider">Curator's Insight</span>
+                                    {activity.insight}
                                   </p>
-                                  <div className="flex flex-wrap gap-3">
-                                    <a href={activity.mapsUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.1em] font-semibold border border-[var(--color-luxury-border)] px-4 py-2 rounded-full hover:bg-[var(--color-luxury-ink)] hover:text-[var(--color-luxury-bg)] transition-colors">
-                                      <MapPin className="w-3 h-3" /> View on Maps
-                                    </a>
-                                    {activity.ticketUrl && activity.ticketUrl.trim() !== '' && (
-                                      <a href={activity.ticketUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.1em] font-semibold border border-[var(--color-luxury-border)] px-4 py-2 rounded-full hover:bg-[var(--color-luxury-ink)] hover:text-[var(--color-luxury-bg)] transition-colors">
-                                        <Ticket className="w-3 h-3" /> Get Tickets
-                                      </a>
-                                    )}
-                                  </div>
                                 </div>
-                                <div className="w-full xl:w-56 aspect-[4/3] rounded-xl overflow-hidden shrink-0 shadow-md">
-                                  <PlaceImage
-                                    query={`${activity.title} ${itinerary.destination}`}
-                                    alt={activity.title}
-                                    className="w-full h-full object-cover hover:scale-105 transition-transform duration-700"
-                                  />
-                                </div>
+                              )}
+
+                              <div className="flex flex-wrap gap-3">
+                                <a href={activity.mapsUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.1em] font-semibold border border-[var(--color-luxury-border)] px-4 py-2 rounded-full hover:bg-[var(--color-luxury-ink)] hover:text-[var(--color-luxury-bg)] transition-all duration-300">
+                                  <MapPin className="w-3 h-3" /> View on Maps
+                                </a>
+                                {activity.ticketUrl && activity.ticketUrl.trim() !== '' && (
+                                  <a href={activity.ticketUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-[10px] uppercase tracking-[0.1em] font-semibold border border-[var(--color-luxury-border)] px-4 py-2 rounded-full hover:bg-[var(--color-luxury-ink)] hover:text-[var(--color-luxury-bg)] transition-all duration-300">
+                                    <Ticket className="w-3 h-3" /> Get Tickets
+                                  </a>
+                                )}
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
+                            <div className="w-full aspect-[16/9] md:aspect-[4/3] rounded-xl overflow-hidden shrink-0 shadow-lg group-hover:shadow-xl transition-shadow duration-500">
+                              <PlaceImage
+                                placeName={activity.placeName || activity.title}
+                                destination={itinerary.destination}
+                                alt={activity.title}
+                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
+                              />
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </motion.div>
                 </div>
 
                 {/* Tips */}
-                <div className="mt-24 border-t border-[var(--color-luxury-border)] pt-16">
-                  <h3 className="text-3xl font-serif mb-10 text-center">Curator's Notes</h3>
+                <div className="mt-32 border-t border-[var(--color-luxury-border)] pt-24 pb-12">
+                  <div className="text-center mb-16">
+                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--color-luxury-ink)]/5 mb-6">
+                      <Sparkles className="w-5 h-5 text-[var(--color-accent)]" />
+                    </div>
+                    <h3 className="text-4xl font-serif mb-4">Curator's Notes</h3>
+                    <p className="text-[var(--color-luxury-muted)] uppercase tracking-[0.2em] text-xs font-semibold">Essential insights for your journey</p>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                     {itinerary.tips.map((tip, index) => (
                       <motion.div 
@@ -827,9 +884,9 @@ export default function App() {
                         viewport={{ once: true }}
                         transition={{ delay: index * 0.1, duration: 0.5 }}
                         key={index} 
-                        className="p-8 glass-panel rounded-2xl hover:bg-white/[0.04] transition-colors"
+                        className="p-8 border border-[var(--color-luxury-border)] bg-[var(--color-luxury-surface)] rounded-3xl hover:shadow-xl transition-all duration-300 group"
                       >
-                        <CheckCircle2 className="w-6 h-6 mb-4 text-[var(--color-accent)]/80" strokeWidth={1.5} />
+                        <CheckCircle2 className="w-6 h-6 mb-6 text-[var(--color-luxury-muted)] group-hover:text-[var(--color-accent)] transition-colors duration-300" strokeWidth={1.5} />
                         <p className="text-sm leading-relaxed text-[var(--color-luxury-ink)]/80">{tip}</p>
                       </motion.div>
                     ))}
@@ -837,18 +894,20 @@ export default function App() {
                 </div>
                 
                 {/* Mark Destination as Visited */}
-                <div className="mt-16 text-center">
-                  <button 
+                <div className="mt-24 text-center pb-20">
+                  <motion.button 
+                    whileHover={!visitedPlaces.includes(itinerary.country) ? { scale: 1.02 } : {}}
+                    whileTap={!visitedPlaces.includes(itinerary.country) ? { scale: 0.98 } : {}}
                     onClick={() => handleMarkDestinationVisited(itinerary.destination, itinerary.country)}
                     disabled={visitedPlaces.includes(itinerary.country)}
-                    className={`inline-flex items-center gap-2 text-sm uppercase tracking-[0.1em] font-semibold border border-[var(--color-luxury-border)] px-8 py-4 rounded-full transition-colors ${
+                    className={`inline-flex items-center gap-3 text-xs uppercase tracking-[0.2em] font-semibold border px-10 py-5 rounded-full transition-all duration-500 shadow-lg ${
                       visitedPlaces.includes(itinerary.country) 
-                        ? 'bg-[var(--color-luxury-ink)] text-[var(--color-luxury-bg)] opacity-50 cursor-not-allowed' 
-                        : 'hover:bg-[var(--color-accent)] hover:text-[#0f0f0f]'
+                        ? 'border-[var(--color-luxury-border)] bg-[var(--color-luxury-surface)] text-[var(--color-luxury-muted)] cursor-not-allowed' 
+                        : 'border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-accent)] hover:bg-[var(--color-accent)] hover:text-black hover:shadow-[0_0_30px_rgba(212,175,55,0.3)]'
                     }`}
                   >
-                    <CheckCircle2 className="w-4 h-4" /> {visitedPlaces.includes(itinerary.country) ? 'Destination Visited' : 'Mark Destination as Visited'}
-                  </button>
+                    <CheckCircle2 className="w-5 h-5" /> {visitedPlaces.includes(itinerary.country) ? 'Destination Conquered' : 'Mark as Visited'}
+                  </motion.button>
                 </div>
               </motion.div>
             ) : (
