@@ -14,14 +14,14 @@ import { doc, getDoc, setDoc, updateDoc, arrayUnion, increment, onSnapshot, coll
 import { Toaster, toast } from 'sonner';
 import { handleFirestoreError, OperationType } from './firebase-error';
 
-function PlaceImage({ placeName, destination, alt, className }: { placeName: string, destination: string, alt: string, className?: string }) {
+function PlaceImage({ placeName, destination, alt, className, imagePrompt }: { placeName: string, destination: string, alt: string, className?: string, imagePrompt?: string }) {
   const [imgSrc, setImgSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
     setLoading(true);
-    fetchPlaceImage(placeName, destination).then(src => {
+    fetchPlaceImage(placeName, destination, imagePrompt).then(src => {
       if (isMounted) {
         setImgSrc(src);
         setLoading(false);
@@ -33,7 +33,7 @@ function PlaceImage({ placeName, destination, alt, className }: { placeName: str
       }
     });
     return () => { isMounted = false; };
-  }, [placeName, destination]);
+  }, [placeName, destination, imagePrompt]);
 
   if (loading) {
     return (
@@ -198,6 +198,13 @@ export default function App() {
 
   const handleRemoveInterest = (interest: string) => {
     setParams({ ...params, interests: params.interests.filter((i) => i !== interest) });
+  };
+
+  const handleUpdateNotes = (dayIndex: number, activityIndex: number, notes: string) => {
+    if (!itinerary) return;
+    const newItinerary = { ...itinerary };
+    newItinerary.days[dayIndex].activities[activityIndex].notes = notes;
+    setItinerary(newItinerary);
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -851,11 +858,22 @@ export default function App() {
                                   </a>
                                 )}
                               </div>
+                              <div className="mt-6">
+                                <label className="text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--color-luxury-muted)] mb-2 block">Personal Notes</label>
+                                <textarea
+                                  value={activity.notes}
+                                  onChange={(e) => handleUpdateNotes(currentDayIndex, actIndex, e.target.value)}
+                                  placeholder="Add your personal notes or preferences here..."
+                                  className="w-full bg-[var(--color-luxury-surface)] border border-[var(--color-luxury-border)] rounded-xl p-4 text-sm text-[var(--color-luxury-ink)] placeholder-[var(--color-luxury-muted)] focus:outline-none focus:border-[var(--color-accent)] transition-all"
+                                  rows={3}
+                                />
+                              </div>
                             </div>
                             <div className="w-full aspect-[16/9] md:aspect-[4/3] rounded-xl overflow-hidden shrink-0 shadow-lg group-hover:shadow-xl transition-shadow duration-500">
                               <PlaceImage
                                 placeName={activity.placeName || activity.title}
                                 destination={itinerary.destination}
+                                imagePrompt={activity.imagePrompt}
                                 alt={activity.title}
                                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
                               />

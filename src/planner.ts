@@ -38,6 +38,7 @@ export interface Itinerary {
       mapsUrl: string;
       ticketUrl: string;
       imagePrompt: string;
+      notes: string;
     }[];
   }[];
   tips: string[];
@@ -101,9 +102,10 @@ Return the itinerary as a structured JSON object containing 'summary', 'flightDe
                       costEstimate: { type: Type.STRING, description: 'Estimated cost' },
                       mapsUrl: { type: Type.STRING, description: 'Google Maps search URL for this exact place' },
                       ticketUrl: { type: Type.STRING, description: 'URL to buy tickets or official website. Empty string if not applicable.' },
-                      imagePrompt: { type: Type.STRING, description: 'A highly detailed, specific prompt for an AI image generator to create a realistic, high-quality travel photography shot of this EXACT location. Must include the specific name of the place, the city, time of day lighting (e.g., golden hour, night illumination), and photographic style (e.g., 8k resolution, DSLR, wide-angle).' }
+                      imagePrompt: { type: Type.STRING, description: 'A highly optimized, concise Google Image Search query for this exact location. Include the specific name of the place and the city. Do NOT include camera settings or AI prompt keywords. Example: "Louvre Museum Paris exterior" or "Osteria Francescana Modena food".' },
+                      notes: { type: Type.STRING, description: 'Personal notes or customization preferences for this activity.' }
                     },
-                    required: ['time', 'title', 'placeName', 'description', 'insight', 'costEstimate', 'mapsUrl', 'ticketUrl', 'imagePrompt']
+                    required: ['time', 'title', 'placeName', 'description', 'insight', 'costEstimate', 'mapsUrl', 'ticketUrl', 'imagePrompt', 'notes']
                   }
                 }
               },
@@ -142,30 +144,47 @@ Return the itinerary as a structured JSON object containing 'summary', 'flightDe
 }
 
 const imageCache = new Map<string, string>();
+const failedCache = new Set<string>();
 
-export async function fetchPlaceImage(placeName: string, destination: string): Promise<string> {
-  const query = `${placeName} ${destination}`;
+export async function fetchPlaceImage(placeName: string, destination: string, imagePrompt?: string): Promise<string> {
+  const googleQuery = imagePrompt || `${placeName} ${destination} travel photography`;
+  const fallbackQuery = `${placeName} ${destination}`;
   
-  if (imageCache.has(query)) {
-    return imageCache.get(query)!;
+  if (imageCache.has(googleQuery)) {
+    return imageCache.get(googleQuery)!;
   }
+  
+  if (failedCache.has(googleQuery)) {
+    // If we already failed, skip to fallback
+  } else {
+    const googleApiKey = import.meta.env.VITE_GOOGLE_SEARCH_API_KEY;
+    const googleCx = import.meta.env.VITE_GOOGLE_SEARCH_CX;
 
-  const googleApiKey = import.meta.env.VITE_GOOGLE_SEARCH_API_KEY;
-  const googleCx = import.meta.env.VITE_GOOGLE_SEARCH_CX;
-
-  if (googleApiKey && googleCx) {
-    try {
-      // 1. Try Google Custom Search API if keys are provided
-      const res = await fetch(`https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(query)}&cx=${googleCx}&key=${googleApiKey}&searchType=image&imgSize=large&imgType=photo&num=1`);
-      const data = await res.json();
-      if (data.items && data.items.length > 0) {
-        const imageUrl = data.items[0].link;
-        imageCache.set(query, imageUrl);
-        return imageUrl;
+    if (googleApiKey && googleCx) {
+      try {
+        // 1. Try Google Custom Search API if keys are provided
+        const res = await fetch(`https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(googleQuery)}&cx=${googleCx}&key=${googleApiKey}&searchType=image&imgSize=large&imgType=photo&num=5`);
+        const data = await res.json();
+        if (data.items && data.items.length > 0) {
+          // Pick the first result that seems like a photo (filter out logos/icons)
+          const photoResult = data.items.find((item: any) => {
+              const text = (item.title + ' ' + item.snippet).toLowerCase();
+              return !text.includes('logo') && 
+                     !text.includes('icon') &&
+                     !text.includes('vector') &&
+                     !text.includes('clipart') &&
+                     !text.includes('map');
+          }) || data.items[0];
+          
+          const imageUrl = photoResult.link;
+          imageCache.set(googleQuery, imageUrl);
+          return imageUrl;
+        }
+      } catch (e) {
+        console.error("Google Custom Search API error, falling back to Wikimedia:", e);
       }
-    } catch (e) {
-      console.error("Google Custom Search API error, falling back to Wikimedia:", e);
     }
+    failedCache.add(googleQuery);
   }
 
   try {
@@ -188,14 +207,14 @@ export async function fetchPlaceImage(placeName: string, destination: string): P
         const hasMatch = placeWords.some(w => w.length > 3 && titleWords.includes(w)) || placeWords.join(' ').includes(page.title.toLowerCase());
 
         if (hasMatch && imageUrl && !imageUrl.toLowerCase().endsWith('.svg') && !imageUrl.toLowerCase().includes('icon')) {
-          imageCache.set(query, imageUrl);
+          imageCache.set(googleQuery, imageUrl);
           return imageUrl;
         }
       }
     }
 
     // 3. Try Wikimedia Commons search (broader search for images)
-    const commonsRes = await fetch(`https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(query + " filetype:bitmap")}&gsrlimit=5&prop=imageinfo&iiprop=url&format=json&origin=*`);
+    const commonsRes = await fetch(`https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(fallbackQuery + " filetype:bitmap")}&gsrlimit=5&prop=imageinfo&iiprop=url&format=json&origin=*`);
     const commonsData = await commonsRes.json();
     const commonsPages = commonsData?.query?.pages;
     
@@ -205,7 +224,7 @@ export async function fetchPlaceImage(placeName: string, destination: string): P
         const imageInfo = commonsPages[pageId]?.imageinfo?.[0];
         const imageUrl = imageInfo?.url;
         if (imageUrl && !imageUrl.toLowerCase().endsWith('.svg') && !imageUrl.toLowerCase().endsWith('.gif')) {
-          imageCache.set(query, imageUrl);
+          imageCache.set(googleQuery, imageUrl);
           return imageUrl;
         }
       }
@@ -219,6 +238,6 @@ export async function fetchPlaceImage(placeName: string, destination: string): P
   const seed = seedWords.length > 0 ? seedWords[0] : placeName.replace(/[^a-zA-Z0-9]/g, '') || 'travel';
   
   const fallback = `https://picsum.photos/seed/${encodeURIComponent(seed)}/1920/1080?blur=2`;
-  imageCache.set(query, fallback);
+  imageCache.set(googleQuery, fallback);
   return fallback;
 }
